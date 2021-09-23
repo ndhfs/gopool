@@ -17,15 +17,16 @@ type WorkersPool struct {
 	kill chan struct{}
 	wg sync.WaitGroup
 	worker Worker
+	done chan struct{}
 }
 
 type Worker func(attempt uint, ctx context.Context) error
 
 func NewWorkersPool() *WorkersPool {
-	return &WorkersPool{kill: make(chan struct{})}
+	return &WorkersPool{kill: make(chan struct{}), done: make(chan struct{}, 1)}
 }
 
-func (p *WorkersPool) Do(size int, worker Worker) {
+func (p *WorkersPool) Run(size int, worker Worker) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.worker = worker
@@ -33,6 +34,11 @@ func (p *WorkersPool) Do(size int, worker Worker) {
 		p.runWorker()
 		p.size++
 	}
+
+	go func() {
+		p.wg.Wait()
+		close(p.done)
+	}()
 }
 
 func (p *WorkersPool) Resize(size int) {
@@ -95,4 +101,8 @@ func (p *WorkersPool) Stop() {
 	}
 	p.mu.Unlock()
 	p.wg.Wait()
+}
+
+func (p *WorkersPool) Done() <-chan struct{} {
+	return p.done
 }
